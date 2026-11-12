@@ -91,7 +91,7 @@ public class MainActivity extends Activity {
             box(c,left,top,right,bottom,10,0xff050713,false,1);
             c.save();
             c.clipRect(left+2,top+2,right-2,bottom-2);
-            if(!spinning) {
+            if(!spinning || reelStopped[i]) {
                 txt(c,fruits[reels[i]],x+32,397,39,Color.WHITE,true);
             } else {
                 float travel=reelTravel(i,now);
