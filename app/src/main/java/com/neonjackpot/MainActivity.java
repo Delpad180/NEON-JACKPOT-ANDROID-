@@ -29,34 +29,37 @@ public class MainActivity extends Activity {
         final Paint p = new Paint(3);
         final Handler h = new Handler(Looper.getMainLooper());
         final Random rng = new Random();
-        final ToneGenerator audio = new ToneGenerator(AudioManager.STREAM_MUSIC, 72);
-        final String[] symbols = {"7", "♦", "★", "🍒", "BAR", "♛"};
+        final ToneGenerator audio = new ToneGenerator(AudioManager.STREAM_MUSIC, 82);
+        final String[] fruits = {"🍒","🍋","🍊","🍉","🍇","🍓","🍍","🥝"};
         final int[] reels = {0,1,2,3,4};
         final int[] result = new int[5];
-        final float[] sparkX = new float[55], sparkY = new float[55], sparkV = new float[55];
-        int credits = 1000, bet = 10, lastWin = 0, tick = 0, flash = 0;
-        boolean spinning = false, soundOn = true, jackpot = false;
-        String status = "¡PREPARADO PARA JUGAR!";
-        String sub = "Consigue combinaciones y gana créditos";
-        final int cyan = Color.rgb(0,235,255), pink = Color.rgb(255,45,190);
-        final int gold = Color.rgb(255,205,75);
+        final int[] travelCells = new int[5];
+        final boolean[] reelStopped = new boolean[5];
+        final float[] sparkX = new float[85], sparkY = new float[85], sparkV = new float[85];
+        final float[] sparkSize = new float[85];
+        int credits=1000, bet=10, lastWin=0;
+        long spinStart=0, lastFrame=0;
+        boolean spinning=false, soundOn=true, jackpot=false;
+        String status="¡PREPARADO PARA JUGAR!";
+        String sub="Consigue combinaciones y gana créditos";
+        final int cyan=Color.rgb(0,235,255), pink=Color.rgb(255,45,190), gold=Color.rgb(255,205,75);
 
         SlotView() {
             super(MainActivity.this);
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            setLayerType(View.LAYER_TYPE_SOFTWARE,null);
             for(int i=0;i<sparkX.length;i++) resetSpark(i);
         }
         void resetSpark(int i) {
             sparkX[i]=rng.nextInt(400); sparkY[i]=rng.nextInt(800);
-            sparkV[i]=1+rng.nextFloat()*3;
+            sparkV[i]=1+rng.nextFloat()*3.5f; sparkSize[i]=1+rng.nextFloat()*2.5f;
         }
-        void tone(int type, int duration) {
+        void tone(int type,int duration) {
             if(soundOn) try { audio.startTone(type,duration); } catch(Exception ignored) {}
         }
         void box(Canvas c,float l,float t,float r,float b,float rad,int color,boolean stroke,int sw) {
             p.setShader(null); p.setColor(color); p.setStyle(stroke?Paint.Style.STROKE:Paint.Style.FILL);
             p.setStrokeWidth(sw); p.clearShadowLayer();
-            if(stroke) p.setShadowLayer(12,0,0,color);
+            if(stroke) p.setShadowLayer(14,0,0,color);
             c.drawRoundRect(new RectF(l,t,r,b),rad,rad,p);
             p.setStyle(Paint.Style.FILL); p.clearShadowLayer();
         }
@@ -64,23 +67,54 @@ public class MainActivity extends Activity {
             p.setShader(null); p.setColor(color); p.setTextSize(size);
             p.setTypeface(Typeface.create(bold?"sans-serif-black":"sans-serif",bold?1:0));
             p.setTextAlign(Paint.Align.CENTER); p.setStyle(Paint.Style.FILL);
-            p.setShadowLayer(bold?10:0,0,0,bold?color:Color.TRANSPARENT);
+            p.setShadowLayer(bold?9:0,0,0,bold?color:Color.TRANSPARENT);
             c.drawText(s,x,y,p); p.clearShadowLayer();
+        }
+        float reelTravel(int i,long now) {
+            long local=now-spinStart-i*260L;
+            if(local<=0)return 0;
+            float t=Math.min(1f,local/1650f);
+            float eased=1f-(float)Math.pow(1f-t,3);
+            return travelCells[i]*72f*eased;
+        }
+        void drawReel(Canvas c,int i,float x,long now) {
+            float left=x, top=298, right=x+64, bottom=465;
+            box(c,left,top,right,bottom,10,0xff050713,false,1);
+            c.save();
+            c.clipRect(left+2,top+2,right-2,bottom-2);
+            if(!spinning) {
+                txt(c,fruits[reels[i]],x+32,397,39,Color.WHITE,true);
+            } else {
+                float travel=reelTravel(i,now);
+                int steps=(int)Math.floor(travel/72f);
+                float frac=(travel/72f)-steps;
+                int current=(reels[i]+steps)%fruits.length;
+                float center=382-frac*72f;
+                txt(c,fruits[(current+fruits.length-1)%fruits.length],x+32,center-72,38,0xff8b8b9e,true);
+                txt(c,fruits[current],x+32,center,42,Color.WHITE,true);
+                txt(c,fruits[(current+1)%fruits.length],x+32,center+72,38,0xff8b8b9e,true);
+            }
+            c.restore();
+            box(c,left,top,right,bottom,10,spinning?cyan:(jackpot?gold:cyan),true,spinning?2:1);
+            p.setShader(null); p.setColor(0x22ffffff); p.setStrokeWidth(1);
+            c.drawLine(left+6,top+5,right-6,top+5,p);
         }
         @Override protected void onDraw(Canvas c) {
             super.onDraw(c);
+            long now=System.currentTimeMillis();
             c.save(); c.scale(getWidth()/400f,getHeight()/800f);
-            int pulse=(int)(25+20*Math.sin(System.currentTimeMillis()/180.0));
+            float pulse=(float)(0.5+0.5*Math.sin(now/190.0));
             p.setShader(new LinearGradient(0,0,400,800,new int[]{0xff160b35,0xff070814,0xff17051f},null,Shader.TileMode.CLAMP));
             c.drawRect(0,0,400,800,p); p.setShader(null);
             for(int y=0;y<800;y+=40){p.setColor(0x223b2c65);c.drawLine(0,y,400,y,p);}
+            for(int x=0;x<400;x+=40){p.setColor(0x113b2c65);c.drawLine(x,0,x,800,p);}
             for(int i=0;i<sparkX.length;i++){
-                p.setColor((i%3==0?0x88ff45d4:0x6671faff));
-                c.drawCircle(sparkX[i],sparkY[i],i%4==0?2.2f:1.2f,p);
-                if(spinning||jackpot){sparkY[i]+=sparkV[i];if(sparkY[i]>800)resetSpark(i);}
+                p.setColor(i%3==0?0x99ff45d4:0x8871faff);
+                c.drawCircle(sparkX[i],sparkY[i],sparkSize[i],p);
+                if(spinning||jackpot){sparkY[i]-=sparkV[i];if(sparkY[i]<0) {sparkY[i]=800;sparkX[i]=rng.nextInt(400);}}
             }
             txt(c,"NEON",200,72,48,cyan,true); txt(c,"JACKPOT",200,116,39,pink,true);
-            txt(c,"S L O T   M A C H I N E",200,145,11,Color.LTGRAY,false);
+            txt(c,"F R U I T   S L O T",200,145,11,Color.LTGRAY,false);
             box(c,22,169,378,238,18,0xff17172f,false,1);
             box(c,22,169,378,238,18,cyan,true,2);
             txt(c,"CRÉDITOS",87,197,12,Color.LTGRAY,true);
@@ -91,19 +125,14 @@ public class MainActivity extends Activity {
 
             box(c,15,258,385,515,22,0xff260d42,false,1);
             box(c,15,258,385,515,22,pink,true,2);
-            txt(c,"★  LÍNEA DE PREMIO  ★",200,283,12,gold,true);
-            for(int i=0;i<5;i++){
-                float x=27+i*70;
-                box(c,x,298,x+64,465,10,0xff050713,false,1);
-                box(c,x,298,x+64,465,10,spinning?cyan:(jackpot?gold:cyan),true,spinning?2:1);
-                int col=reels[i]==0?gold:reels[i]==1?pink:reels[i]==2?cyan:Color.WHITE;
-                txt(c,symbols[reels[i]],x+32,397,reels[i]==4?19:34,col,true);
-            }
+            txt(c,"✦  LÍNEA DE PREMIO  ✦",200,283,12,gold,true);
+            for(int i=0;i<5;i++) drawReel(c,i,27+i*70,now);
             box(c,27,477,373,527,12,0xff171329,false,1);
-            txt(c,status,200,498,13,jackpot?gold:gold,true);
+            txt(c,status,200,498,13,gold,true);
             txt(c,sub,200,516,10,Color.LTGRAY,false);
             if(jackpot) {
-                p.setColor(0x55ffd34f); c.drawRect(20,250,380,530,p);
+                p.setColor((int)(0x33ffffff+(pulse*0x22ffffff))); c.drawRect(20,250,380,530,p);
+                for(int i=0;i<18;i++){p.setColor(i%2==0?gold:pink);c.drawCircle((i*47+13)%390,270+(i*61)%260,2.5f+ pulse*2,p);}
                 txt(c,"✦  ¡MEGA PREMIO!  ✦",200,548,15,gold,true);
             }
             txt(c,"APUESTA",200,559,12,Color.LTGRAY,true);
@@ -116,59 +145,71 @@ public class MainActivity extends Activity {
             txt(c,spinning?"GIRANDO...":"G I R A R",200,721,27,spinning?gold:cyan,true);
             txt(c,"CRÉDITOS VIRTUALES · SIN DINERO REAL",200,780,9,Color.GRAY,false);
             c.restore();
-            if(spinning||jackpot){postInvalidateDelayed(45);}
+            if(spinning||jackpot)postInvalidateDelayed(16);
         }
         @Override public boolean onTouchEvent(MotionEvent e) {
-            if(e.getAction()==MotionEvent.ACTION_UP){
+            if(e.getAction()==MotionEvent.ACTION_UP) {
                 float x=e.getX()*400/getWidth(), y=e.getY()*800/getHeight();
-                if(y>169&&y<238&&x>245){soundOn=!soundOn;if(soundOn)tone(ToneGenerator.TONE_PROP_ACK,100);invalidate();return true;}
-                if(y>674&&y<755) spin();
+                if(y>169&&y<238&&x>245){soundOn=!soundOn;if(soundOn)tone(ToneGenerator.TONE_PROP_ACK,120);invalidate();return true;}
+                if(y>674&&y<755)spin();
                 else if(y>570&&y<640&&!spinning){
-                    if(x<155){bet=Math.max(5,bet-5);tone(ToneGenerator.TONE_PROP_BEEP,55);}
-                    if(x>245){bet=Math.min(100,bet+5);tone(ToneGenerator.TONE_PROP_BEEP,55);}
+                    if(x<155){bet=Math.max(5,bet-5);tone(ToneGenerator.TONE_PROP_BEEP,65);}
+                    if(x>245){bet=Math.min(100,bet+5);tone(ToneGenerator.TONE_PROP_BEEP,65);}
                     invalidate();
-                } else if(y>755&&credits<100){credits+=500;sub="Bono de cortesía: +500 créditos";tone(ToneGenerator.TONE_PROP_ACK,160);invalidate();}
+                } else if(y>755&&credits<100){credits+=500;sub="Bono de cortesía: +500 créditos";tone(ToneGenerator.TONE_PROP_ACK,220);invalidate();}
                 performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY);
                 return true;
             }
             return true;
         }
-        void spin(){
+        void spin() {
             if(spinning)return;
-            if(credits<bet){status="CRÉDITOS INSUFICIENTES";sub="Toca la zona inferior para recibir un bono";tone(ToneGenerator.TONE_PROP_NACK,180);invalidate();return;}
-            credits-=bet;lastWin=0;spinning=true;jackpot=false;tick=0;
-            status="¡MUCHA SUERTE!";sub="Los rodillos están girando...";
-            tone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD,120);
+            if(credits<bet){status="CRÉDITOS INSUFICIENTES";sub="Toca la zona inferior para recibir un bono";tone(ToneGenerator.TONE_PROP_NACK,220);invalidate();return;}
+            credits-=bet;lastWin=0;spinning=true;jackpot=false;spinStart=System.currentTimeMillis();
+            status="¡MUCHA SUERTE!";sub="Los rodillos giran y se detienen uno a uno";
+            tone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD,180);
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
-            for(int i=0;i<5;i++)result[i]=rng.nextInt(symbols.length);
+            for(int i=0;i<5;i++){
+                result[i]=rng.nextInt(fruits.length);
+                travelCells[i]=18+((result[i]-reels[i]-18)%fruits.length+fruits.length)%fruits.length;
+                reelStopped[i]=false;
+            }
             animateReels();
         }
-        void animateReels(){
+        void animateReels() {
             h.postDelayed(()->{
                 if(!spinning)return;
-                tick++;
-                for(int i=0;i<5;i++)if(tick<8+i*3)reels[i]=rng.nextInt(symbols.length);
-                if(tick%2==0)tone(ToneGenerator.TONE_PROP_BEEP,35);
-                if(tick>=22)finish();else{invalidate();animateReels();}
-            },90);
-            invalidate();
+                long now=System.currentTimeMillis();
+                boolean allStopped=true;
+                for(int i=0;i<5;i++){
+                    long local=now-spinStart-i*260L;
+                    if(local>=1650&&!reelStopped[i]){
+                        reelStopped[i]=true;reels[i]=result[i];
+                        tone(ToneGenerator.TONE_PROP_BEEP,95);
+                        performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
+                    }
+                    if(!reelStopped[i])allStopped=false;
+                }
+                invalidate();
+                if(allStopped)finish();else animateReels();
+            },16);
         }
-        void finish(){
-            for(int i=0;i<5;i++)reels[i]=result[i];
+        void finish() {
             spinning=false;
             int count=1;while(count<5&&reels[count]==reels[0])count++;
             int prize=0;
-            if(count>=3){int mult=reels[0]==0?20:reels[0]==1?12:reels[0]==2?8:5;prize=bet*mult*(count==3?1:count==4?2:4);}
-            if(prize==0){int[] n=new int[symbols.length];for(int v:reels)n[v]++;for(int v:n)if(v>=3)prize=Math.max(prize,bet*3);}
-            lastWin=prize;credits+=prize;
-            jackpot=prize>=bet*20;
+            if(count>=3){int mult=reels[0]==0?20:reels[0]==1?14:reels[0]==2?10:6;prize=bet*mult*(count==3?1:count==4?2:4);}
+            if(prize==0){int[] n=new int[fruits.length];for(int v:reels)n[v]++;for(int v:n)if(v>=3)prize=Math.max(prize,bet*3);}
+            lastWin=prize;credits+=prize;jackpot=prize>=bet*20;
             status=prize>0?"¡PREMIO! +"+prize+" CRÉDITOS":"SIN PREMIO ESTA VEZ";
             sub=jackpot?"¡COMBINACIÓN EXTRAORDINARIA!":prize>0?"¡Buena combinación!":"Prueba otra combinación";
-            if(prize>0){tone(jackpot?ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD:ToneGenerator.TONE_PROP_ACK,jackpot?650:280);performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);}
-            else tone(ToneGenerator.TONE_PROP_NACK,180);
+            if(prize>0){tone(jackpot?ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD:ToneGenerator.TONE_PROP_ACK,jackpot?900:400);performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);}
+            else tone(ToneGenerator.TONE_PROP_NACK,240);
             invalidate();
-            if(jackpot)h.postDelayed(()->{jackpot=false;invalidate();},2600);
+            if(jackpot)h.postDelayed(()->{jackpot=false;invalidate();},3000);
         }
-        @Override protected void onDetachedFromWindow(){super.onDetachedFromWindow();h.removeCallbacksAndMessages(null);audio.release();}
+        @Override protected void onDetachedFromWindow() {
+            super.onDetachedFromWindow();h.removeCallbacksAndMessages(null);audio.release();
+        }
     }
 }
