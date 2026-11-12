@@ -9,6 +9,8 @@ import android.view.View;
 import android.view.HapticFeedbackConstants;
 import android.media.AudioManager;
 import android.media.ToneGenerator;
+import android.media.AudioTrack;
+import android.media.AudioFormat;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -30,6 +32,10 @@ public class MainActivity extends Activity {
         final Handler h = new Handler(Looper.getMainLooper());
         final Random rng = new Random();
         final ToneGenerator audio = new ToneGenerator(AudioManager.STREAM_MUSIC, 82);
+        AudioTrack soundtrack;
+        final int musicRate=22050;
+        final float[] fxX=new float[110], fxY=new float[110], fxVX=new float[110], fxVY=new float[110], fxLife=new float[110];
+        final int[] fxColor=new int[110];
         final String[] fruits = {"🍒","🍋","🍊","🍉","🍇","🍓","🍍","🥝"};
         final int[] reels = {0,1,2,3,4};
         final int[] result = new int[5];
@@ -46,8 +52,8 @@ public class MainActivity extends Activity {
 
         SlotView() {
             super(MainActivity.this);
-            setLayerType(View.LAYER_TYPE_SOFTWARE,null);
             for(int i=0;i<sparkX.length;i++) resetSpark(i);
+            prepareSoundtrack();
         }
         void resetSpark(int i) {
             sparkX[i]=rng.nextInt(400); sparkY[i]=rng.nextInt(800);
@@ -73,9 +79,12 @@ public class MainActivity extends Activity {
         float reelTravel(int i,long now) {
             long local=now-spinStart-i*260L;
             if(local<=0)return 0;
-            float t=Math.min(1f,local/1650f);
-            float eased=1f-(float)Math.pow(1f-t,3);
-            return travelCells[i]*72f*eased;
+            float t=Math.min(1f,local/2000f);
+            float area;
+            if(t<0.18f) area=(t*t)/(2f*0.18f);
+            else if(t<0.72f) area=0.09f+(t-0.18f);
+            else {float d=t-0.72f; area=0.63f+d-(d*d)/(2f*0.28f);}
+            return travelCells[i]*72f*(area/0.77f);
         }
         void drawReel(Canvas c,int i,float x,long now) {
             float left=x, top=298, right=x+64, bottom=465;
@@ -113,6 +122,17 @@ public class MainActivity extends Activity {
                 c.drawCircle(sparkX[i],sparkY[i],sparkSize[i],p);
                 if(spinning||jackpot){sparkY[i]-=sparkV[i];if(sparkY[i]<0) {sparkY[i]=800;sparkX[i]=rng.nextInt(400);}}
             }
+            for(int i=0;i<fxLife.length;i++) if(fxLife[i]>0){
+                p.setColor(fxColor[i]); p.setAlpha(Math.min(255,(int)(fxLife[i]*255)));
+                p.setStrokeWidth(2.2f); c.drawLine(fxX[i],fxY[i],fxX[i]-fxVX[i]*3,fxY[i]-fxVY[i]*3,p);
+                fxX[i]+=fxVX[i]; fxY[i]+=fxVY[i]; fxVY[i]+=0.10f; fxLife[i]-=0.018f;
+            }
+            p.setAlpha(255);
+            if(spinning) for(int i=0;i<5;i++){
+                float glow=0.5f+0.5f*(float)Math.sin(now/75.0+i);
+                p.setColor(i%2==0?0x22ff45d4:0x223beaff); p.setStrokeWidth(2+glow*3);
+                c.drawLine(27+i*70,290,27+i*70,470,p);
+            }
             txt(c,"NEON",200,72,48,cyan,true); txt(c,"JACKPOT",200,116,39,pink,true);
             txt(c,"F R U I T   S L O T",200,145,11,Color.LTGRAY,false);
             box(c,22,169,378,238,18,0xff17172f,false,1);
@@ -145,7 +165,7 @@ public class MainActivity extends Activity {
             txt(c,spinning?"GIRANDO...":"G I R A R",200,721,27,spinning?gold:cyan,true);
             txt(c,"CRÉDITOS VIRTUALES · SIN DINERO REAL",200,780,9,Color.GRAY,false);
             c.restore();
-            if(spinning||jackpot)postInvalidateDelayed(16);
+            if(spinning||jackpot||hasParticles())postInvalidateDelayed(16);
         }
         @Override public boolean onTouchEvent(MotionEvent e) {
             if(e.getAction()==MotionEvent.ACTION_UP) {
@@ -168,6 +188,7 @@ public class MainActivity extends Activity {
             credits-=bet;lastWin=0;spinning=true;jackpot=false;spinStart=System.currentTimeMillis();
             status="¡MUCHA SUERTE!";sub="Los rodillos giran y se detienen uno a uno";
             tone(ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD,180);
+            startSoundtrack(); burst(200,390);
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
             for(int i=0;i<5;i++){
                 result[i]=rng.nextInt(fruits.length);
@@ -183,9 +204,10 @@ public class MainActivity extends Activity {
                 boolean allStopped=true;
                 for(int i=0;i<5;i++){
                     long local=now-spinStart-i*260L;
-                    if(local>=1650&&!reelStopped[i]){
+                    if(local>=2000&&!reelStopped[i]){
                         reelStopped[i]=true;reels[i]=result[i];
                         tone(ToneGenerator.TONE_PROP_BEEP,95);
+                        burst(62+i*70,382);
                         performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP);
                     }
                     if(!reelStopped[i])allStopped=false;
@@ -196,6 +218,7 @@ public class MainActivity extends Activity {
         }
         void finish() {
             spinning=false;
+            stopSoundtrack();
             int count=1;while(count<5&&reels[count]==reels[0])count++;
             int prize=0;
             if(count>=3){int mult=reels[0]==0?20:reels[0]==1?14:reels[0]==2?10:6;prize=bet*mult*(count==3?1:count==4?2:4);}
@@ -203,13 +226,47 @@ public class MainActivity extends Activity {
             lastWin=prize;credits+=prize;jackpot=prize>=bet*20;
             status=prize>0?"¡PREMIO! +"+prize+" CRÉDITOS":"SIN PREMIO ESTA VEZ";
             sub=jackpot?"¡COMBINACIÓN EXTRAORDINARIA!":prize>0?"¡Buena combinación!":"Prueba otra combinación";
-            if(prize>0){tone(jackpot?ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD:ToneGenerator.TONE_PROP_ACK,jackpot?900:400);performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);}
+            if(prize>0){tone(jackpot?ToneGenerator.TONE_CDMA_ALERT_CALL_GUARD:ToneGenerator.TONE_PROP_ACK,jackpot?900:400);burst(200,390);if(jackpot){burst(200,300);burst(200,470);}performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);}
             else tone(ToneGenerator.TONE_PROP_NACK,240);
             invalidate();
             if(jackpot)h.postDelayed(()->{jackpot=false;invalidate();},3000);
         }
+        void prepareSoundtrack() {
+            try {
+                int count=musicRate*8; short[] samples=new short[count];
+                double[] notes={523.25,659.25,783.99,659.25,587.33,698.46,880.00,698.46,493.88,587.33,739.99,587.33,440.00,554.37,659.25,554.37};
+                for(int n=0;n<count;n++){
+                    double t=n/(double)musicRate; int beat=(int)(t*2.0)%notes.length;
+                    double phase=t*notes[beat]*2*Math.PI;
+                    double pluck=Math.sin(phase)*Math.exp(-((t*2.0)%1.0)*2.8);
+                    double pad=Math.sin(2*Math.PI*notes[beat]*0.5*t)*0.12;
+                    double bass=Math.sin(2*Math.PI*(notes[beat]/4.0)*t)*0.18;
+                    double tick=(n%(musicRate/2)<180)?Math.sin(2*Math.PI*4200*t)*0.035:0;
+                    double v=(pluck*0.22+pad+bass+tick)*0.62;
+                    samples[n]=(short)(Math.max(-1,Math.min(1,v))*32767);
+                }
+                soundtrack=new AudioTrack(AudioManager.STREAM_MUSIC,musicRate,AudioFormat.CHANNEL_OUT_MONO,AudioFormat.ENCODING_PCM_16BIT,count*2,AudioTrack.MODE_STATIC);
+                soundtrack.write(samples,0,count); soundtrack.setLoopPoints(0,count,-1); soundtrack.setVolume(0.32f);
+            } catch(Exception ignored) { soundtrack=null; }
+        }
+        void startSoundtrack() {
+            try { if(soundtrack!=null){soundtrack.pause();soundtrack.reloadStaticData();soundtrack.setPlaybackHeadPosition(0);soundtrack.play();} } catch(Exception ignored) {}
+        }
+        void stopSoundtrack() { try { if(soundtrack!=null)soundtrack.pause(); } catch(Exception ignored) {} }
+        boolean hasParticles(){for(float life:fxLife)if(life>0)return true;return false;}
+        void burst(float x,float y){
+            for(int j=0;j<22;j++){
+                int k=-1;for(int q=0;q<fxLife.length;q++)if(fxLife[q]<=0){k=q;break;}
+                if(k<0)k=rng.nextInt(fxLife.length);
+                double a=rng.nextDouble()*Math.PI*2;float speed=1.5f+rng.nextFloat()*5.5f;
+                fxX[k]=x;fxY[k]=y;fxVX[k]=(float)Math.cos(a)*speed;fxVY[k]=(float)Math.sin(a)*speed;
+                fxLife[k]=0.75f+rng.nextFloat()*0.25f;
+                int[] colors={gold,pink,cyan,Color.WHITE,0xffff8c42};fxColor[k]=colors[rng.nextInt(colors.length)];
+            }
+        }
         @Override protected void onDetachedFromWindow() {
-            super.onDetachedFromWindow();h.removeCallbacksAndMessages(null);audio.release();
+            super.onDetachedFromWindow();h.removeCallbacksAndMessages(null);stopSoundtrack();
+            if(soundtrack!=null){soundtrack.release();soundtrack=null;}audio.release();
         }
     }
 }
