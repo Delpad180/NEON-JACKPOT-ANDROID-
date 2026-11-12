@@ -110,14 +110,14 @@ public class MainActivity extends Activity {
             credits-=bet;lastWin=0;spinning=true;tick=0;
             status="¡MUCHA SUERTE!";sub="Los rodillos están girando...";
             for(int i=0;i<5;i++)result[i]=rng.nextInt(symbols.length);
-            animate();
+            animateReels();
         }
-        void animate(){
+        void animateReels(){
             h.postDelayed(()->{
                 if(!spinning)return;
                 tick++;
                 for(int i=0;i<5;i++)if(tick<8+i*3)reels[i]=rng.nextInt(symbols.length);
-                if(tick>=22)finish();else{invalidate();animate();}
+                if(tick>=22)finish();else{invalidate();animateReels();}
             },90);
             invalidate();
         }
